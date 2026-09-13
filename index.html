@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>claude</title>
+<style>
+  :root {
+    --fondo: #ffffff;
+    --texto: #1a1a1a;
+    --texto-suave: #8a8a8a;
+    --gris-burbuja: #f2f2f2;
+    --gris-hover: #ececec;
+    --borde: #e4e4e4;
+    --negro: #0d0d0d;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    height: 100vh;
+    display: flex;
+    font-size: 15px;
+  }
+
+  /* ---------- Barra lateral ---------- */
+  aside {
+    width: 52px;
+    border-right: 1px solid var(--borde);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  aside .logo {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid var(--negro);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 10px;
+    user-select: none;
+  }
+  aside button {
+    width: 36px; height: 36px;
+    border: none;
+    background: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    color: #555;
+  }
+  aside button:hover { background: var(--gris-hover); }
+  aside svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+
+  /* ---------- Columna principal ---------- */
+  .principal {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* ---------- Cabecera ---------- */
+  header {
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  header .modelo {
+    font-weight: 600;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  header .modelo svg { width: 14px; height: 14px; stroke: var(--texto-suave); fill: none; stroke-width: 2; }
+  header .nuevo {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 20px;
+    color: var(--texto-suave);
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 6px;
+  }
+  header .nuevo:hover { background: var(--gris-hover); color: var(--texto); }
+  header .estado {
+    margin-left: auto;
+    font-size: 12.5px;
+    color: var(--texto-suave);
+  }
+
+  /* ---------- Zona de mensajes ---------- */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 0 24px;
+  }
+  .contenido {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .fila { animation: entrar .15s ease-out; }
+  @keyframes entrar {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .fila { animation: none; } }
+
+  /* Mensaje del usuario: burbuja gris a la derecha */
+  .fila.usuario { display: flex; justify-content: flex-end; }
+  .fila.usuario .burbuja {
+    background: var(--gris-burbuja);
+    border-radius: 18px;
+    padding: 9px 16px;
+    max-width: 75%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
+  }
+
+  /* Mensaje del asistente: avatar + nombre + texto plano */
+  .fila.asistente { display: flex; gap: 12px; }
+  .fila.asistente .avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1.5px solid var(--negro);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    user-select: none;
+  }
+  .fila.asistente .cuerpo { min-width: 0; flex: 1; }
+  .fila.asistente .nombre {
+    font-weight: 700;
+    font-size: 14.5px;
+    margin-bottom: 5px;
+  }
+  .fila.asistente .respuesta {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.6;
+  }
+
+  /* Iconos de acción bajo la respuesta */
+  .acciones {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .acciones button {
+    border: none;
+    background: none;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 6px;
+    color: #777;
+    display: grid;
+    place-items: center;
+  }
+  .acciones button:hover { background: var(--gris-hover); color: var(--texto); }
+  .acciones svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .coste {
+    font-size: 11.5px;
+    color: var(--texto-suave);
+    align-self: center;
+    margin-left: 6px;
+  }
+
+  .sistema {
+    text-align: center;
+    font-size: 13px;
+    color: var(--texto-suave);
+    padding: 4px 12px;
+  }
+  .sistema.error { color: #b91c1c; }
+
+  /* Indicador escribiendo */
+  .escribiendo { display: flex; gap: 5px; padding: 4px 0; }
+  .escribiendo span {
+    width: 7px; height: 7px;
+    background: #b5b5b5;
+    border-radius: 50%;
+    animation: rebote 1.2s infinite;
+  }
+  .escribiendo span:nth-child(2) { animation-delay: .18s; }
+  .escribiendo span:nth-child(3) { animation-delay: .36s; }
+  @keyframes rebote {
+    0%, 60%, 100% { transform: none; opacity: .5; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* ---------- Barra de entrada ---------- */
+  footer {
+    flex-shrink: 0;
+    padding: 8px 24px 18px;
+  }
+  .caja {
+    max-width: 760px;
+    margin: 0 auto;
+    border: 1px solid var(--borde);
+    border-radius: 24px;
+    padding: 10px 10px 8px 18px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--fondo);
+  }
+  .caja:focus-within { border-color: #c8c8c8; }
+  textarea {
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 15px;
+    font-family: inherit;
+    line-height: 1.5;
+    max-height: 140px;
+    background: transparent;
+    color: var(--texto);
+  }
+  textarea::placeholder { color: var(--texto-suave); }
+  .caja .botones {
+    display: flex;
+    align-items: center;
+  }
+  .caja .botones .mas {
+    border: none;
+    background: none;
+    cursor: default;
+    font-size: 19px;
+    color: var(--texto-suave);
+    padding: 4px 8px;
+  }
+  #enviar {
+    margin-left: auto;
+    width: 36px; height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: var(--negro);
+    color: #fff;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: opacity .15s;
+  }
+  #enviar:hover:not(:disabled) { opacity: .8; }
+  #enviar:disabled { background: #d4d4d4; cursor: default; }
+  #enviar svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2.2; }
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="logo">C</div>
+  <button id="lateral-nuevo" title="Nuevo chat">
+    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</aside>
+
+<div class="principal">
+  <header>
+    <span class="modelo">claude · php
+      <svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </span>
+    <button class="nuevo" id="nuevo" title="Nuevo chat">+</button>
+    <span class="estado" id="estado"></span>
+  </header>
+
+  <main id="scroll">
+    <div class="contenido" id="mensajes">
+      <div class="sistema">Conectado con Claude Code (versión PHP). Cada máquina de la red tiene su propia conversación.</div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="caja">
+      <textarea id="entrada" rows="1" placeholder="Enviar un Mensaje"></textarea>
+      <div class="botones">
+        <button class="mas" tabindex="-1">+</button>
+        <button id="enviar" title="Enviar" aria-label="Enviar mensaje">
+          <svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script>
+  const scroll   = document.getElementById("scroll");
+  const mensajes = document.getElementById("mensajes");
+  const entrada  = document.getElementById("entrada");
+  const btn      = document.getElementById("enviar");
+  const estado   = document.getElementById("estado");
+
+  function bajar() { scroll.scrollTop = scroll.scrollHeight; }
+
+  function pintarUsuario(texto) {
+    const fila = document.createElement("div");
+    fila.className = "fila usuario";
+    const b = document.createElement("div");
+    b.className = "burbuja";
+    b.textContent = texto;
+    fila.appendChild(b);
+    mensajes.appendChild(fila);
+    bajar();
+  }
+
+  function pintarAsistente(texto, coste) {
+    const fila = document.createElement("div");
+    fila.className = "fila asistente";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "C";
+
+    const cuerpo = document.createElement("div");
+    cuerpo.className = "cuerpo";
+
+    const nombre = document.createElement("div");
+    nombre.className = "nombre";
+    nombre.textContent = "claude";
+
+    const resp = document.createElement("div");
+    resp.className = "respuesta";
+    resp.textContent = texto;
+
+    const acciones = document.createElement("div");
+    acciones.className = "acciones";
+
+    const copiar = document.createElement("button");
+    copiar.title = "Copiar";
+    copiar.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+    copiar.addEventListener("click", () => {
+      navigator.clipboard.writeText(texto);
+      copiar.style.color = "#111";
+      setTimeout(() => (copiar.style.color = ""), 800);
+    });
+    acciones.appendChild(copiar);
+
+    if (coste != null) {
+      const c = document.createElement("span");
+      c.className = "coste";
+      c.textContent = "$" + coste.toFixed(4);
+      acciones.appendChild(c);
+    }
+
+    cuerpo.append(nombre, resp, acciones);
+    fila.append(avatar, cuerpo);
+    mensajes.appendChild(fila);
+    bajar();
+  }
+
+  function pintarSistema(texto, esError) {
+    const div = document.createElement("div");
+    div.className = "sistema" + (esError ? " error" : "");
+    div.textContent = texto;
+    mensajes.appendChild(div);
+    bajar();
+  }
+
+  function mostrarEscribiendo() {
+    const fila = document.createElement("div");
+    fila.className = "fila asistente";
+    fila.id = "escribiendo-fila";
+    fila.innerHTML =
+      '<div class="avatar">C</div>' +
+      '<div class="cuerpo"><div class="nombre">claude</div>' +
+      '<div class="escribiendo"><span></span><span></span><span></span></div></div>';
+    mensajes.appendChild(fila);
+    bajar();
+  }
+  function quitarEscribiendo() {
+    document.getElementById("escribiendo-fila")?.remove();
+  }
+
+  async function enviar() {
+    const texto = entrada.value.trim();
+    if (!texto || btn.disabled) return;
+
+    entrada.value = "";
+    ajustarAltura();
+    pintarUsuario(texto);
+
+    btn.disabled = true;
+    estado.textContent = "pensando…";
+    mostrarEscribiendo();
+
+    try {
+      const res = await fetch("claude.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensaje: texto })
+      });
+      const data = await res.json();
+      quitarEscribiendo();
+
+      if (!res.ok) {
+        pintarSistema("Error: " + (data.error || "algo salió mal"), true);
+      } else {
+        pintarAsistente(data.respuesta, data.coste);
+      }
+    } catch (e) {
+      quitarEscribiendo();
+      pintarSistema("No se pudo conectar con el servidor. ¿Está corriendo Apache?", true);
+    } finally {
+      btn.disabled = false;
+      estado.textContent = "";
+      entrada.focus();
+    }
+  }
+
+  async function nuevoChat() {
+    // Avisamos al servidor para que borre la sesión guardada de esta IP
+    try {
+      await fetch("claude.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nuevo: true })
+      });
+    } catch (e) { /* si falla, no pasa nada grave */ }
+    mensajes.innerHTML = '<div class="sistema">Nuevo chat. La conversación anterior se ha cerrado.</div>';
+    entrada.focus();
+  }
+
+  function ajustarAltura() {
+    entrada.style.height = "auto";
+    entrada.style.height = Math.min(entrada.scrollHeight, 140) + "px";
+  }
+
+  btn.addEventListener("click", enviar);
+  document.getElementById("nuevo").addEventListener("click", nuevoChat);
+  document.getElementById("lateral-nuevo").addEventListener("click", nuevoChat);
+  entrada.addEventListener("input", ajustarAltura);
+  entrada.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      enviar();
+    }
+  });
+
+  entrada.focus();
+</script>
+</body>
+</html>
