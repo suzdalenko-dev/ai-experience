@@ -307,24 +307,38 @@
 </div>
 
 <script>
+  /*
+   * Backend real:
+   * /var/www/html/ai-experience/api/claude.php
+   */
+  const API_URL = "api/claude.php";
+
   const scroll   = document.getElementById("scroll");
   const mensajes = document.getElementById("mensajes");
   const entrada  = document.getElementById("entrada");
   const btn      = document.getElementById("enviar");
   const estado   = document.getElementById("estado");
 
-  function bajar() { scroll.scrollTop = scroll.scrollHeight; }
+
+  function bajar() {
+    scroll.scrollTop = scroll.scrollHeight;
+  }
+
 
   function pintarUsuario(texto) {
     const fila = document.createElement("div");
     fila.className = "fila usuario";
-    const b = document.createElement("div");
-    b.className = "burbuja";
-    b.textContent = texto;
-    fila.appendChild(b);
+
+    const burbuja = document.createElement("div");
+    burbuja.className = "burbuja";
+    burbuja.textContent = texto;
+
+    fila.appendChild(burbuja);
     mensajes.appendChild(fila);
+
     bajar();
   }
+
 
   function pintarAsistente(texto, coste) {
     const fila = document.createElement("div");
@@ -341,120 +355,333 @@
     nombre.className = "nombre";
     nombre.textContent = "claude";
 
-    const resp = document.createElement("div");
-    resp.className = "respuesta";
-    resp.textContent = texto;
+    const respuesta = document.createElement("div");
+    respuesta.className = "respuesta";
+    respuesta.textContent = texto;
 
     const acciones = document.createElement("div");
     acciones.className = "acciones";
 
     const copiar = document.createElement("button");
+    copiar.type = "button";
     copiar.title = "Copiar";
-    copiar.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
-    copiar.addEventListener("click", () => {
-      navigator.clipboard.writeText(texto);
-      copiar.style.color = "#111";
-      setTimeout(() => (copiar.style.color = ""), 800);
+
+    copiar.innerHTML = `
+      <svg viewBox="0 0 24 24">
+        <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+        <path d="M5 15V5a2 2 0 0 1 2-2h10"></path>
+      </svg>
+    `;
+
+    copiar.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(texto);
+
+        copiar.style.color = "#111";
+
+        setTimeout(() => {
+          copiar.style.color = "";
+        }, 800);
+      } catch (error) {
+        console.error("No se pudo copiar:", error);
+      }
     });
+
     acciones.appendChild(copiar);
 
-    if (coste != null) {
-      const c = document.createElement("span");
-      c.className = "coste";
-      c.textContent = "$" + coste.toFixed(4);
-      acciones.appendChild(c);
+    /*
+     * Convertimos el coste a Number porque PHP o Claude podrían
+     * devolverlo como texto.
+     */
+    if (coste !== null && coste !== undefined) {
+      const costeNumerico = Number(coste);
+
+      if (Number.isFinite(costeNumerico)) {
+        const elementoCoste = document.createElement("span");
+        elementoCoste.className = "coste";
+        elementoCoste.textContent = "$" + costeNumerico.toFixed(4);
+
+        acciones.appendChild(elementoCoste);
+      }
     }
 
-    cuerpo.append(nombre, resp, acciones);
-    fila.append(avatar, cuerpo);
+    cuerpo.appendChild(nombre);
+    cuerpo.appendChild(respuesta);
+    cuerpo.appendChild(acciones);
+
+    fila.appendChild(avatar);
+    fila.appendChild(cuerpo);
+
     mensajes.appendChild(fila);
+
     bajar();
   }
 
-  function pintarSistema(texto, esError) {
-    const div = document.createElement("div");
-    div.className = "sistema" + (esError ? " error" : "");
-    div.textContent = texto;
-    mensajes.appendChild(div);
+
+  function pintarSistema(texto, esError = false) {
+    const elemento = document.createElement("div");
+
+    elemento.className =
+      "sistema" + (esError ? " error" : "");
+
+    elemento.textContent = texto;
+
+    mensajes.appendChild(elemento);
+
     bajar();
   }
+
 
   function mostrarEscribiendo() {
+    /*
+     * Eliminamos un indicador anterior por seguridad.
+     */
+    quitarEscribiendo();
+
     const fila = document.createElement("div");
+
     fila.className = "fila asistente";
     fila.id = "escribiendo-fila";
-    fila.innerHTML =
-      '<div class="avatar">C</div>' +
-      '<div class="cuerpo"><div class="nombre">claude</div>' +
-      '<div class="escribiendo"><span></span><span></span><span></span></div></div>';
+
+    fila.innerHTML = `
+      <div class="avatar">C</div>
+
+      <div class="cuerpo">
+        <div class="nombre">claude</div>
+
+        <div class="escribiendo">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      </div>
+    `;
+
     mensajes.appendChild(fila);
+
     bajar();
   }
+
+
   function quitarEscribiendo() {
-    document.getElementById("escribiendo-fila")?.remove();
+    const elemento = document.getElementById(
+      "escribiendo-fila"
+    );
+
+    if (elemento) {
+      elemento.remove();
+    }
   }
+
+
+  /*
+   * Lee la respuesta primero como texto.
+   *
+   * Esto permite mostrar un error comprensible si Apache devuelve
+   * HTML, por ejemplo:
+   *
+   * - 404 Not Found
+   * - 403 Forbidden
+   * - 500 Internal Server Error
+   *
+   * Antes, res.json() fallaba y siempre se mostraba:
+   * "¿Está corriendo Apache?"
+   */
+  async function leerRespuestaJson(respuestaHttp) {
+    const textoRespuesta = await respuestaHttp.text();
+
+    if (textoRespuesta.trim() === "") {
+      throw new Error(
+        `El servidor respondió HTTP ${respuestaHttp.status}, pero la respuesta está vacía.`
+      );
+    }
+
+    try {
+      return JSON.parse(textoRespuesta);
+    } catch (error) {
+      const resumen = textoRespuesta
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, 250);
+
+      throw new Error(
+        `El servidor respondió HTTP ${respuestaHttp.status}, ` +
+        `pero no devolvió JSON. Respuesta: ${resumen}`
+      );
+    }
+  }
+
 
   async function enviar() {
     const texto = entrada.value.trim();
-    if (!texto || btn.disabled) return;
+
+    if (!texto || btn.disabled) {
+      return;
+    }
 
     entrada.value = "";
     ajustarAltura();
+
     pintarUsuario(texto);
 
     btn.disabled = true;
     estado.textContent = "pensando…";
+
     mostrarEscribiendo();
 
     try {
-      const res = await fetch("claude.php", {
+      const respuestaHttp = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mensaje: texto })
+
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+
+        body: JSON.stringify({
+          mensaje: texto
+        })
       });
-      const data = await res.json();
+
+      const datos = await leerRespuestaJson(
+        respuestaHttp
+      );
+
+      if (!respuestaHttp.ok) {
+        throw new Error(
+          datos.error ||
+          `El backend respondió HTTP ${respuestaHttp.status}.`
+        );
+      }
+
+      if (
+        typeof datos.respuesta !== "string"
+        || datos.respuesta.trim() === ""
+      ) {
+        throw new Error(
+          "El backend respondió correctamente, pero no contiene el campo 'respuesta'."
+        );
+      }
+
+      pintarAsistente(
+        datos.respuesta,
+        datos.coste
+      );
+    } catch (error) {
+      console.error("Error enviando el mensaje:", error);
+
+      pintarSistema(
+        "Error: " + (
+          error instanceof Error
+            ? error.message
+            : "No se pudo contactar con el backend."
+        ),
+        true
+      );
+    } finally {
       quitarEscribiendo();
 
-      if (!res.ok) {
-        pintarSistema("Error: " + (data.error || "algo salió mal"), true);
-      } else {
-        pintarAsistente(data.respuesta, data.coste);
-      }
-    } catch (e) {
-      quitarEscribiendo();
-      pintarSistema("No se pudo conectar con el servidor. ¿Está corriendo Apache?", true);
-    } finally {
       btn.disabled = false;
+      estado.textContent = "";
+
+      entrada.focus();
+    }
+  }
+
+
+  async function nuevoChat() {
+    estado.textContent = "cerrando conversación…";
+
+    try {
+      const respuestaHttp = await fetch(API_URL, {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+
+        body: JSON.stringify({
+          nuevo: true
+        })
+      });
+
+      const datos = await leerRespuestaJson(
+        respuestaHttp
+      );
+
+      if (!respuestaHttp.ok) {
+        throw new Error(
+          datos.error ||
+          `El backend respondió HTTP ${respuestaHttp.status}.`
+        );
+      }
+
+      mensajes.innerHTML = `
+        <div class="sistema">
+          Nuevo chat. La conversación anterior se ha cerrado.
+        </div>
+      `;
+    } catch (error) {
+      console.error("Error creando un chat nuevo:", error);
+
+      pintarSistema(
+        "No se pudo crear el nuevo chat: " + (
+          error instanceof Error
+            ? error.message
+            : "error desconocido"
+        ),
+        true
+      );
+    } finally {
       estado.textContent = "";
       entrada.focus();
     }
   }
 
-  async function nuevoChat() {
-    // Avisamos al servidor para que borre la sesión guardada de esta IP
-    try {
-      await fetch("api/claude.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nuevo: true })
-      });
-    } catch (e) { /* si falla, no pasa nada grave */ }
-    mensajes.innerHTML = '<div class="sistema">Nuevo chat. La conversación anterior se ha cerrado.</div>';
-    entrada.focus();
-  }
 
   function ajustarAltura() {
     entrada.style.height = "auto";
-    entrada.style.height = Math.min(entrada.scrollHeight, 140) + "px";
+
+    entrada.style.height =
+      Math.min(entrada.scrollHeight, 140) + "px";
   }
 
-  btn.addEventListener("click", enviar);
-  document.getElementById("nuevo").addEventListener("click", nuevoChat);
-  document.getElementById("lateral-nuevo").addEventListener("click", nuevoChat);
-  entrada.addEventListener("input", ajustarAltura);
-  entrada.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+
+  /*
+   * Eventos
+   */
+
+  btn.addEventListener(
+    "click",
+    enviar
+  );
+
+  document
+    .getElementById("nuevo")
+    .addEventListener(
+      "click",
+      nuevoChat
+    );
+
+  document
+    .getElementById("lateral-nuevo")
+    .addEventListener(
+      "click",
+      nuevoChat
+    );
+
+  entrada.addEventListener(
+    "input",
+    ajustarAltura
+  );
+
+  entrada.addEventListener("keydown", (evento) => {
+    if (
+      evento.key === "Enter"
+      && !evento.shiftKey
+    ) {
+      evento.preventDefault();
       enviar();
     }
   });
