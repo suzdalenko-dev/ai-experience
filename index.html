@@ -433,7 +433,7 @@
   async function nuevoChat() {
     // Avisamos al servidor para que borre la sesión guardada de esta IP
     try {
-      await fetch("claude.php", {
+      await fetch("api/claude.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nuevo: true })
