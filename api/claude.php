@@ -1435,7 +1435,7 @@ if (
 
             @chmod(
                 $memoryPath,
-                0777
+                0666
             );
         } else {
             /*
