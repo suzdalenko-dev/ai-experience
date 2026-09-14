@@ -851,17 +851,16 @@ $command = [
     '--disable-slash-commands',
 
     /*
-     * CERO herramientas.
+     * Permitimos herramientas web
      */
     '--tools',
-    '',
+    'WebSearch,WebFetch',
 
     /*
-     * Defensa adicional:
-     * bloquear cualquier herramienta.
+     * Permitimos
      */
-    '--disallowedTools',
-    '*',
+    '--allowedTools',
+    'WebSearch,WebFetch',
 ];
 
 
@@ -1340,13 +1339,13 @@ if (
      */
     if (
         $newMemory
-        !== $currentMemory
+        != $currentMemory
     ) {
         /*
          * Si hay algo que recordar.
          */
         if (
-            $newMemory !== ''
+            $newMemory != ''
         ) {
             /*
              * Crear STORAGE solamente cuando haga falta.
