@@ -178,7 +178,6 @@ $maxTurns = max(
 
 $command = [
     'claude',
-
     /*
      * Ejecución no interactiva.
      */
