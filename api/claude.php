@@ -1,65 +1,240 @@
 <?php
 
 declare(strict_types=1);
+
+/*
+|--------------------------------------------------------------------------
+| PASO 2: HTML -> PHP -> CLAUDE -> PHP -> HTML
+|--------------------------------------------------------------------------
+|
+| En este paso:
+|
+| - Recibimos la pregunta del navegador.
+| - PHP ejecuta el comando "claude".
+| - La pregunta se introduce por stdin.
+| - Claude devuelve JSON por stdout.
+| - PHP devuelve la respuesta al navegador.
+|
+| No guardamos conversaciones ni sesiones.
+|
+*/
+
 set_time_limit(0);
+
 header('Content-Type: application/json; charset=utf-8');
 
-function response_error(int $statusCode, string $message): void{
+
+function responderError(int $statusCode, string $message): void
+{
     http_response_code($statusCode);
-    echo json_encode(['error' => $message,], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    echo json_encode(
+        [
+            'error' => $message,
+        ],
+        JSON_UNESCAPED_UNICODE
+        | JSON_UNESCAPED_SLASHES
+    );
+
     exit;
 }
 
+
+/*
+|--------------------------------------------------------------------------
+| 1. VALIDAR PETICIÓN
+|--------------------------------------------------------------------------
+*/
+
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    responderError(
+        405,
+        'Este endpoint solamente acepta POST.'
+    );
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| 2. LEER EL JSON DEL FETCH
+|--------------------------------------------------------------------------
+*/
+
 $rawBody = file_get_contents('php://input');
 
-if ($rawBody == false || trim($rawBody) == ''){
-    response_error(400, 'No se ha recibido contenido..');
+if (
+    $rawBody === false
+    || trim($rawBody) === ''
+) {
+    responderError(
+        400,
+        'No se ha recibido contenido.'
+    );
 }
 
 $requestData = json_decode($rawBody, true);
+
 if (!is_array($requestData)) {
-    response_error(400, 'El contenido recibido no es un JSON válido');
+    responderError(
+        400,
+        'El contenido recibido no es un JSON válido.'
+    );
 }
 
 $message = $requestData['mensaje'] ?? null;
 
-if (!is_string($message) || trim($message) == '') {
-    response_error(400, 'Falta el campo mensaje.');
+if (
+    !is_string($message)
+    || trim($message) === ''
+) {
+    responderError(
+        400,
+        'Falta el campo mensaje.'
+    );
 }
 
-$message    = trim($message);
-$configPath = '/var/www/html/ai-config/claude-config.php';
+$message = trim($message);
+
+
+/*
+|--------------------------------------------------------------------------
+| 3. CARGAR CONFIGURACIÓN DE CLAUDE
+|--------------------------------------------------------------------------
+*/
+
+$configPath =
+    '/var/www/html/ai-config/claude-config.php';
+
 if (!is_readable($configPath)) {
-    response_error(500, 'No se puede leer claude-config.php.');
+    responderError(
+        500,
+        'No se puede leer claude-config.php.'
+    );
 }
-try{
-    $config = require $configPath;
-} catch (\Exception $e){
-    response_error(500, $e->getMessage());
-}
-if(!is_array($config)){
-    response_error(500, 'Configuración no valida');
-} 
 
-$oauthToken = trim((string) $config['oauth_token']);
-$model      = trim((string) $config['model']);
-$effort     = trim((string) $config['effort']);
-$maxTurns   = (string) $config['max_turns'];
+try {
+    $config = require $configPath;
+} catch (Throwable $error) {
+    responderError(
+        500,
+        'claude-config.php contiene un error de PHP.'
+    );
+}
+
+if (!is_array($config)) {
+    responderError(
+        500,
+        'claude-config.php debe devolver un array.'
+    );
+}
+
+$oauthToken = trim(
+    (string) ($config['oauth_token'] ?? '')
+);
+
+$model = trim(
+    (string) ($config['model'] ?? 'sonnet')
+);
+
+$effort = trim(
+    (string) ($config['effort'] ?? 'high')
+);
+
+$maxTurns = (int) (
+    $config['max_turns'] ?? 1
+);
+
+if ($oauthToken === '') {
+    responderError(
+        500,
+        'No hay un oauth_token configurado.'
+    );
+}
+
+$maxTurns = max(
+    1,
+    min(10, $maxTurns)
+);
+
+
+/*
+|--------------------------------------------------------------------------
+| 4. CONSTRUIR EL COMANDO
+|--------------------------------------------------------------------------
+|
+| Equivalente aproximado en consola:
+|
+| echo "pregunta" | claude -p \
+|     --output-format json \
+|     --model opus \
+|     --effort max \
+|     --no-session-persistence
+|
+| La pregunta NO se introduce dentro del comando.
+| Se enviará posteriormente por stdin.
+|
+*/
 
 $command = [
-    'claude', '-p',
-    '--output-format', 'json',
-    '--model', $model,
-    '--effort', $effort,
-    '--max-turns', $maxTurns,
+    'claude',
+
+    /*
+     * No cargar CLAUDE.md, memoria, MCP, plugins,
+     * hooks, skills ni configuraciones del proyecto.
+     */
+    '--bare',
+
+    /*
+     * Modo no interactivo.
+     */
+    '-p',
+
+    '--output-format',
+    'json',
+
+    '--model',
+    $model,
+
+    '--effort',
+    $effort,
+
+    '--max-turns',
+    (string) $maxTurns,
+
+    /*
+     * No guardar la conversación para reanudarla.
+     */
     '--no-session-persistence',
-    '--safe-mode',
+
     '--no-chrome',
-    '--permission-mode', '-dontAsk',
+
+    '--permission-mode',
+    'dontAsk',
+
     '--disable-slash-commands',
-    '--tools', '',
-    '--disallowedTools', 'mcp__*',
+
+    /*
+     * Desactivar todas las herramientas internas.
+     */
+    '--tools',
+    '',
+
+    /*
+     * Desactivar también las herramientas MCP.
+     */
+    '--disallowedTools',
+    'mcp__*',
 ];
+
+/*
+|--------------------------------------------------------------------------
+| 5. PREPARAR EL ENTORNO DEL PROCESO
+|--------------------------------------------------------------------------
+|
+| Apache ejecuta PHP como www-data.
+| Por tanto, el comando claude también se ejecutará como www-data.
+|
+*/
 
 $environment = [
     'HOME' =>
@@ -131,6 +306,18 @@ $environment = [
         'false',
 ];
 
+
+/*
+|--------------------------------------------------------------------------
+| 6. CREAR EL PROCESO
+|--------------------------------------------------------------------------
+|
+| Descriptor 0: PHP -> stdin de Claude.
+| Descriptor 1: stdout de Claude -> PHP.
+| Descriptor 2: errores de Claude -> PHP.
+|
+*/
+
 $descriptors = [
     0 => ['pipe', 'r'],
     1 => ['pipe', 'w'],
@@ -148,8 +335,12 @@ $process = proc_open(
 );
 
 if (!is_resource($process)) {
-    response_error(500, 'PHP no pudo ejecutar el comando claude');
+    responderError(
+        500,
+        'PHP no pudo ejecutar el comando claude.'
+    );
 }
+
 
 /*
 |--------------------------------------------------------------------------
@@ -157,15 +348,25 @@ if (!is_resource($process)) {
 |--------------------------------------------------------------------------
 */
 
-$written = fwrite($pipes[0], $message);
+$written = fwrite(
+    $pipes[0],
+    $message
+);
+
 fclose($pipes[0]);
 
 if ($written === false) {
     proc_terminate($process);
+
     fclose($pipes[1]);
     fclose($pipes[2]);
+
     proc_close($process);
-    response_error(500, 'No se pudo enviar la pregunta a Claude.');
+
+    responderError(
+        500,
+        'No se pudo enviar la pregunta a Claude.'
+    );
 }
 
 
@@ -175,14 +376,23 @@ if ($written === false) {
 |--------------------------------------------------------------------------
 */
 
-$stdout = stream_get_contents($pipes[1]);
-$stderr = stream_get_contents($pipes[2]);
+$stdout = stream_get_contents(
+    $pipes[1]
+);
+
+$stderr = stream_get_contents(
+    $pipes[2]
+);
 
 fclose($pipes[1]);
 fclose($pipes[2]);
 
-$exitCode   = proc_close($process);
-$durationMs = (int) round((microtime(true) - $startTime) * 1000);
+$exitCode = proc_close($process);
+
+$durationMs = (int) round(
+    (microtime(true) - $startTime) * 1000
+);
+
 
 /*
 |--------------------------------------------------------------------------
@@ -200,8 +410,19 @@ if ($exitCode !== 0) {
     /*
      * Evitar que el token aparezca en el error.
      */
-    $errorDetail = str_replace($oauthToken, '[TOKEN_OCULTO]', $errorDetail);
-    response_error(500, 'Claude terminó con código '. $exitCode. ': '. substr($errorDetail, 0, 3000));
+    $errorDetail = str_replace(
+        $oauthToken,
+        '[TOKEN_OCULTO]',
+        $errorDetail
+    );
+
+    responderError(
+        500,
+        'Claude terminó con código '
+        . $exitCode
+        . ': '
+        . substr($errorDetail, 0, 3000)
+    );
 }
 
 
@@ -217,14 +438,14 @@ $claudeData = json_decode(
 );
 
 if (!is_array($claudeData)) {
-    response_error(
+    responderError(
         500,
         'Claude no devolvió un JSON válido.'
     );
 }
 
 if (!empty($claudeData['is_error'])) {
-    response_error(
+    responderError(
         500,
         (string) (
             $claudeData['result']
@@ -242,6 +463,7 @@ $answer = trim(
 if ($answer === '') {
     $answer = '(Claude no devolvió texto)';
 }
+
 
 /*
 |--------------------------------------------------------------------------
