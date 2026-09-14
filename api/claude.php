@@ -180,11 +180,6 @@ $command = [
     'claude',
 
     /*
-     * No cargar personalizaciones del usuario/proyecto.
-     */
-    '--safe-mode',
-
-    /*
      * Ejecución no interactiva.
      */
     '-p',
