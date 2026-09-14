@@ -176,7 +176,7 @@ $maxTurns = max(
 |
 */
 
-$claudeCommand = [
+$command = [
     'claude',
 
     /*
