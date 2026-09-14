@@ -159,33 +159,33 @@ $maxTurns = max(
 
 /*
 |--------------------------------------------------------------------------
-| 4. CONSTRUIR EL COMANDO
+| 4. CONSTRUIR COMANDO DE CLAUDE
 |--------------------------------------------------------------------------
 |
-| Equivalente aproximado en consola:
+| IMPORTANTE:
 |
-| echo "pregunta" | claude -p \
-|     --output-format json \
-|     --model opus \
-|     --effort max \
-|     --no-session-persistence
+| NO usamos --bare.
 |
-| La pregunta NO se introduce dentro del comando.
-| Se enviará posteriormente por stdin.
+| --bare no acepta CLAUDE_CODE_OAUTH_TOKEN y provocaría:
+|
+|   Not logged in · Please run /login
+|
+| --safe-mode desactiva CLAUDE.md, hooks, skills, plugins,
+| MCP, memoria automática, etc., pero mantiene la
+| autenticación normal.
 |
 */
 
-$command = [
+$claudeCommand = [
     'claude',
 
     /*
-     * No cargar CLAUDE.md, memoria, MCP, plugins,
-     * hooks, skills ni configuraciones del proyecto.
+     * No cargar personalizaciones del usuario/proyecto.
      */
-    '--bare',
+    '--safe-mode',
 
     /*
-     * Modo no interactivo.
+     * Ejecución no interactiva.
      */
     '-p',
 
@@ -202,28 +202,44 @@ $command = [
     (string) $maxTurns,
 
     /*
-     * No guardar la conversación para reanudarla.
+     * Nunca persistir sesiones.
      */
     '--no-session-persistence',
 
+    /*
+     * Sin integración con Chrome.
+     */
     '--no-chrome',
 
+    /*
+     * Nunca pedir permisos interactivamente.
+     */
     '--permission-mode',
     'dontAsk',
 
+    /*
+     * Sin comandos/skills.
+     */
     '--disable-slash-commands',
 
     /*
-     * Desactivar todas las herramientas internas.
+     * SIN herramientas internas.
+     *
+     * Claude no podrá:
+     * - leer archivos
+     * - escribir archivos
+     * - editar archivos
+     * - ejecutar Bash
      */
     '--tools',
     '',
 
     /*
-     * Desactivar también las herramientas MCP.
+     * Bloqueo adicional de TODAS las herramientas,
+     * incluidas MCP.
      */
     '--disallowedTools',
-    'mcp__*',
+    '*',
 ];
 
 /*
